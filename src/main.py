@@ -33,4 +33,9 @@ class FlowMatchingModel(nn.Module):
             nn.Linear(hidden_dim, data_dim)
         )
 
-    
+    def forward(self, t:torch.Tensor, xt:torch.Tensor) -> torch.Tensor:
+       ''' Predicts the velocity field at time t and position xt '''
+       t_concat_xt: torch.Tensor = torch.cat([t, xt], dim=-1)
+       return self.net(t_concat_xt)
+
+
