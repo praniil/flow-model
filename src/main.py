@@ -39,3 +39,21 @@ class FlowMatchingModel(nn.Module):
        return self.net(t_concat_xt)
 
 
+def compute_loss(flow_matching_model:FlowMatchingModel, x0:torch.Tensor, x1:torch.Tensor, t:torch.Tensor) -> torch.Tensor:
+    '''
+    Compute the loss for a single batch of (X0, X1) couplings and flow steps T
+    '''
+    # interpolate the data at the sampled time step
+    xt = interpolate_linear(x0=x0, x1=x1, t=t)
+
+    # get the target velocith
+    v_target = get_target_velocity(x0=x0, x1=x1)
+
+    # predict the velocity
+    v_pred = flow_matching_model(t=t, xt=xt)
+
+    # compute the loss
+    loss = ((v_pred - v_target) ** 2).mean()
+
+    return loss
+
