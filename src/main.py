@@ -1,5 +1,8 @@
+from os import wait
 import torch
 import torch.nn as nn
+import numpy as np 
+import pandas as pd
 
 # straight linear reference path
 # interpolate linear
@@ -57,3 +60,21 @@ def compute_loss(flow_matching_model:FlowMatchingModel, x0:torch.Tensor, x1:torc
 
     return loss
 
+# Train the flow matching model
+
+#Hyperparameters
+data_dim: int  = 1 # one D data
+hidden_dim:int = 64
+train_iteration = 10000
+learning_rate = 1e-3
+batch_size = 256
+
+DEVICE : torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# set random seeds for reproducibility
+np.random.seed(42)
+torch.manual_seed(626)
+
+# init the vector field network and optimizer
+flow_matching_model = FlowMatchingModel(data_dim=data_dim, hidden_dim=hidden_dim).to(DEVICE).train()
+optimizer = torch.optim.Adam(flow_matching_model.parameters(), lr=learning_rate)
