@@ -1,8 +1,20 @@
-from os import wait
+# Imports and setup
+import base64
+import functools
+from pathlib import Path
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scipy.stats
+import seaborn as sns
 import torch
 import torch.nn as nn
-import numpy as np 
-import pandas as pd
+import torch.optim as optim
+from IPython.display import HTML, display
+from matplotlib.animation import FuncAnimation
+from tqdm import tqdm
 
 # straight linear reference path
 # interpolate linear
@@ -78,3 +90,44 @@ torch.manual_seed(626)
 # init the vector field network and optimizer
 flow_matching_model = FlowMatchingModel(data_dim=data_dim, hidden_dim=hidden_dim).to(DEVICE).train()
 optimizer = torch.optim.Adam(flow_matching_model.parameters(), lr=learning_rate)
+
+
+def mixture_sample(size):
+    """
+    Sample from a 1D mixture of two Gaussian distributions.
+
+    50% of samples come from N(-2, 0.5^2)
+    50% of samples come from N(+2, 0.5^2)
+    """
+    # Choose which Gaussian each sample comes from
+    component = np.random.rand(size) < 0.5
+
+    # Sample from the two Gaussians
+    samples = np.where(
+        component,
+        np.random.normal(loc=-2.0, scale=0.5, size=size),
+        np.random.normal(loc=2.0, scale=0.5, size=size)
+    )
+
+    return samples
+
+# Training loop
+losses: list[float] = []
+with tqdm(range(train_iteration), desc="Training", unit="iteration") as progress_bar:
+    for i in progress_bar:
+        # Sample a batch of target and noise samples
+        x1 = torch.from_numpy(mixture_sample(size=batch_size)).to(dtype=torch.float32, device=DEVICE).unsqueeze(-1)
+        x0 = torch.randn_like(x1)
+        # Sample a random time step for each sample in the batch
+        t = torch.rand(x1.shape[0], device=DEVICE).unsqueeze(-1)
+
+        # Compute the loss
+        loss = compute_loss(flow_matching_model=flow_matching_model, x0=x0, x1=x1, t=t)
+
+        # Backpropagate the loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        losses.append(loss.item())
+        progress_bar.set_postfix({"Loss": f"{loss.item():.2f}"})
