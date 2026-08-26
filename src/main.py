@@ -100,9 +100,10 @@ def mixture_sample(size):
     50% of samples come from N(+2, 0.5^2)
     """
     # Choose which Gaussian each sample comes from
-    component = np.random.rand(size) < 0.5
+    component = np.random.rand(size) < 0.5  # random nuber list of len (size) and if number less than 0.5 -> True
 
     # Sample from the two Gaussians
+    # np
     samples = np.where(
         component,
         np.random.normal(loc=-2.0, scale=0.5, size=size),
@@ -131,3 +132,37 @@ with tqdm(range(train_iteration), desc="Training", unit="iteration") as progress
 
         losses.append(loss.item())
         progress_bar.set_postfix({"Loss": f"{loss.item():.2f}"})
+
+# plot of train vs loss
+fig, ax = plt.subplots(
+    figsize=(12, 3),
+    dpi=100
+)
+# Raw loss
+ax.plot(
+    losses,
+    alpha=0.5,
+    label="Loss"
+)
+ax.set_xlabel("Iteration")
+ax.set_ylabel("Loss")
+ax.set_title("Training Loss Curve")
+window_size = 100
+smoothed_losses = np.convolve(
+    losses,
+    np.ones(window_size) / window_size,
+    mode="valid"
+)
+ax.plot(
+    np.arange(
+        window_size - 1,
+        len(losses)
+    ),
+    smoothed_losses,
+    label="Loss (moving avg)"
+)
+ax.legend(loc="upper right")
+ax.set_xlim(0, len(losses))
+ax.grid(True)
+plt.savefig('train_vs_loss.png')
+plt.close(fig)
