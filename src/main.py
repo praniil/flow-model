@@ -166,3 +166,227 @@ ax.set_xlim(0, len(losses))
 ax.grid(True)
 plt.savefig('train_vs_loss.png')
 plt.close(fig)
+
+
+#sampling from the trained model
+# illustration on how to sample x1 and x0 using the learned velocity field
+nb_steps = 15
+path_x = np.zeros(nb_steps + 1) # array to store the full sampled path
+t_steps = np.linspace(0, 1, nb_steps + 1)
+
+# x0 starting piont
+shape = 1, 1
+x0 = torch.randn(shape).to(device=DEVICE)
+print("x0: ", x0)
+
+with torch.inference_mode():
+    flow_matching_model.eval()
+    xt = x0
+    path_x[0] = xt.squeeze().cpu().numpy()
+
+    for i in range(nb_steps):
+        t = t_steps[i]
+        dt = t_steps[i + 1] - t_steps[i]
+        t_batch = torch.Tensor([[t]]).to(DEVICE)
+        xt = xt + flow_matching_model(t=t_batch, xt=xt) * dt    #euler integration
+        path_x[i + 1] = xt.squeeze().cpu().numpy()  # store the new position
+
+display(HTML(pd.DataFrame({"t": t_steps, "x": path_x}).transpose().to_html()))
+
+#multiple samples
+@torch.inference_mode()
+def sample(
+    n_samples: int,  # Number of samples to generate
+    model: FlowMatchingModel,  # The flow matching model
+    nb_steps: int,  # Number of Euler integration steps
+) -> torch.Tensor:
+    """Generates samples by integrating the learned vector field using Euler integration."""
+    ts = torch.linspace(0, 1, nb_steps + 1, device=DEVICE)  #[0, ....,1] nb_steps + 1 many items of equally spaced
+    x_t = torch.randn(n_samples, data_dim).to(DEVICE)  # Sample x_0 ~ N(0, I)
+    for i in range(nb_steps):  # Euler integration from t=0 to t=1 (last step happens just before t=1)
+        t = ts[i]  # Current step $t$
+        dt = ts[i + 1] - ts[i]  # Step size
+        t_batch = t.expand(n_samples).unsqueeze(-1)     # [n_samples itesm] unsqueeze adds one dimenstion 
+        # Move the sample a small step dt in the direction of the velocity field
+        x_t = x_t + model(t=t_batch, x_t=x_t) * dt
+    return x_t  # Final sample x_1
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+
+nb_steps = 50
+n_samples = 5000
+
+ts = torch.linspace(0, 1, nb_steps + 1, device=DEVICE)
+
+x_t = torch.randn(n_samples, data_dim, device=DEVICE)
+
+paths = torch.zeros(
+    nb_steps + 1,
+    n_samples,
+    data_dim,
+    device=DEVICE
+)
+
+paths[0] = x_t
+
+with torch.inference_mode():
+    flow_matching_model.eval()
+
+    for i in range(nb_steps):
+        t = ts[i]
+        dt = ts[i + 1] - ts[i]
+
+        t_batch = t.expand(n_samples).unsqueeze(-1)
+
+        v_pred = flow_matching_model(
+            t=t_batch,
+            xt=x_t
+        )
+
+        x_t = x_t + v_pred * dt
+
+        paths[i + 1] = x_t
+
+paths = paths.squeeze(-1).cpu().numpy()
+ts_np = ts.cpu().numpy()
+
+x0_samples = paths[0]
+x1_samples = paths[-1]
+
+target_samples = mixture_sample(n_samples)
+
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+ax.hist(
+    x0_samples,
+    bins=80,
+    density=True,
+    alpha=0.7,
+    label="x₀ ~ N(0, I)"
+)
+
+ax.set_xlabel("x")
+ax.set_ylabel("Density")
+ax.set_title("Initial Distribution: x₀")
+ax.legend()
+ax.grid(True)
+
+plt.savefig(
+    "x0_distribution.png",
+    dpi=150,
+    bbox_inches="tight"
+)
+
+plt.close(fig)
+
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+selected_steps = [0, 5, 10, 20, 30, 40, 50]
+
+for step in selected_steps:
+    ax.hist(
+        paths[step],
+        bins=80,
+        density=True,
+        histtype="step",
+        linewidth=2,
+        label=f"t={ts_np[step]:.2f}"
+    )
+
+ax.set_xlabel("x")
+ax.set_ylabel("Density")
+ax.set_title("Distribution Evolution During Euler Integration")
+ax.legend()
+ax.grid(True)
+
+plt.savefig(
+    "distribution_evolution.png",
+    dpi=150,
+    bbox_inches="tight"
+)
+
+plt.close(fig)
+
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+ax.hist(
+    target_samples,
+    bins=80,
+    density=True,
+    alpha=0.5,
+    label="Target x₁ distribution"
+)
+
+ax.hist(
+    x1_samples,
+    bins=80,
+    density=True,
+    alpha=0.5,
+    label="Generated x₁ distribution"
+)
+
+ax.set_xlabel("x")
+ax.set_ylabel("Density")
+ax.set_title("Target Distribution vs Generated x₁ Distribution")
+ax.legend()
+ax.grid(True)
+
+plt.savefig(
+    "x1_distribution_vs_target.png",
+    dpi=150,
+    bbox_inches="tight"
+)
+
+plt.close(fig)
+
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+for step in range(0, nb_steps + 1, 5):
+    ax.hist(
+        paths[step],
+        bins=80,
+        density=True,
+        histtype="step",
+        alpha=0.7,
+        label=f"t={ts_np[step]:.2f}"
+    )
+
+ax.hist(
+    target_samples,
+    bins=80,
+    density=True,
+    alpha=0.25,
+    label="Target"
+)
+
+ax.set_xlabel("x")
+ax.set_ylabel("Density")
+ax.set_title("How N(0, I) Transforms into the Target Distribution")
+ax.legend(
+    loc="upper right",
+    fontsize=8,
+    ncol=2
+)
+ax.grid(True)
+
+plt.savefig(
+    "noise_to_target_distribution.png",
+    dpi=150,
+    bbox_inches="tight"
+)
+
+plt.close(fig)
+
+
+print("Saved:")
+print("x0_distribution.png")
+print("distribution_evolution.png")
+print("x1_distribution_vs_target.png")
+print("noise_to_target_distribution.png")
